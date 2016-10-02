@@ -5,21 +5,155 @@ output:
     keep_md: true
 ---
 
-
 ## Loading and preprocessing the data
-
+```{r echo=TRUE}
+options(scipen=999)
+library(dplyr)
+library(ggplot2)
+unzip("activity.zip")
+activity_data <- read.csv("activity.csv")
+```
 
 
 ## What is mean total number of steps taken per day?
+The total number of steps taken per day is:
+```{r echo=TRUE}
+steps_per_day <- aggregate(list(tot_steps=activity_data$steps), 
+                           by=list(date=activity_data$date), 
+                           FUN=sum)
 
+steps_per_day
+```
 
+A histogram of the total steps per day is:
+
+```{r echo=TRUE}
+library(dplyr)
+library(ggplot2)
+
+ggplot(data=steps_per_day, 
+       aes(steps_per_day$tot_steps)) + 
+  geom_histogram(breaks=seq(0, 25000, by=3000),
+                 col="red") + 
+  labs(x="Total steps in a day",
+       y="Number of days",
+       title="Histogram of total of steps in a day")
+```
+
+The mean of the total steps per day is: 
+```{r echo=TRUE}
+summarise(steps_per_day, mean = mean(tot_steps, na.rm = TRUE))
+```
+
+The median of the total steps per day is:
+```{r echo=TRUE}
+summarise(steps_per_day, median = median(tot_steps, na.rm = TRUE))
+```
 
 ## What is the average daily activity pattern?
+The average number of steps taken in 5 minute intervals, averaged over all the days is shown below.
 
+```{r echo = TRUE}
+ggplot(activity_data %>% 
+         select(steps, interval) %>% 
+         group_by(interval) %>% 
+         summarise(avg_steps = mean(steps, na.rm = TRUE)), 
+       aes(interval,
+           avg_steps)) + 
+  geom_line() +
+  labs(x="Interval", 
+       y="Average number of steps", 
+       title="Average number of steps taken in each interval, averaged over all days")
+```
 
+The interval with the maximum number of steps is: 
+```{r echo=TRUE} 
+activity_data %>% select(steps, interval) %>% group_by(interval) %>% summarise(avg_steps = mean(steps, na.rm = TRUE)) %>% filter(avg_steps == max(avg_steps)) %>% select(interval)
+```
+
+The average number of steps taken in this interval is:
+```{r echo=TRUE}
+activity_data %>% select(steps, interval) %>% group_by(interval) %>% summarise(avg_steps = mean(steps, na.rm = TRUE)) %>% filter(avg_steps == max(avg_steps)) %>% select(avg_steps)
+```
 
 ## Imputing missing values
+The total number of missing values in the dataset is:
+```{r echo=TRUE}
+count(activity_data[which(!complete.cases(activity_data)), ])
+```
+
+Missing values are only in the steps column of the dataset, and only happen for whole days.
+
+We will replace these NA values with the mean for the interval in the days when such data is available.
+
+```{r echo=TRUE}
+updated_ad <- activity_data %>%
+  group_by(interval) %>%
+  mutate(steps = replace(steps, is.na(steps), mean(steps, na.rm = TRUE)))
+```
+
+The new total steps per day is:
+
+```{r echo=TRUE}
+updated_steps_per_day <- aggregate(list(tot_steps=updated_ad$steps), 
+                                   by=list(date=updated_ad$date), 
+                                   FUN=sum)
+
+updated_steps_per_day
+```
+
+The histogram of steps taken per day now looks as follows:
+
+```{r echo=TRUE}
+ggplot(data=(updated_steps_per_day %>% filter(!is.na(tot_steps))), 
+       aes((updated_steps_per_day %>% filter(!is.na(tot_steps)))$tot_steps)) + 
+  geom_histogram(breaks=seq(0, 25000, by=3000),
+                 col="red") + 
+  labs(x="Total steps in a day",
+       y="Number of days",
+       title="Histogram of total of steps in a day")
+```
+
+The mean of the total steps per day is: 
+```{r echo=TRUE}
+summarise(updated_steps_per_day, mean = mean(tot_steps, na.rm = TRUE))
+```
+
+The median of the total steps per day is:
+```{r echo=TRUE}
+summarise(updated_steps_per_day, median = median(tot_steps, na.rm = TRUE))
+```
 
 
+For the days with imputed data, the number of steps is equal to the average value for the other days, i.e. `r summarise(steps_per_day, avg = mean(tot_steps, na.rm = TRUE))`. Therefore,  the number of days with total steps per day between 9000 and 12000 increases by 8. 
+
+The average does not change, by the definition of average.
+
+The median also becomes `r summarise(steps_per_day, avg = mean(tot_steps, na.rm = TRUE))`.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+We first create an extra column indicating whether the day is a weekday or not.
+
+```{r echo = TRUE}
+weekend <- c("Saturday", "Sunday")
+updated_ad$weekday <- c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", 
+  "Friday", "Saturday")[as.POSIXlt(updated_ad$date)$wday + 1]
+updated_ad$weekday = c('weekday', 'weekend')[(updated_ad$weekday %in% weekend)+1L]
+updated_ad$weekday <- factor(updated_ad$weekday)
+```
+
+Plotting the difference in average steps between weekday and weekend gives:
+
+```{r echo=TRUE}
+ggplot(updated_ad %>% 
+         select(steps, interval, weekday) %>% 
+         group_by(interval, weekday) %>% 
+         summarise(avg_steps = mean(steps, na.rm = TRUE)), 
+       aes(interval,
+           avg_steps)) + 
+  geom_line() +
+  labs(x="Interval", 
+       y="Average number of steps", 
+       title="Average number of steps taken in each interval, averaged over all days") + 
+  facet_wrap(~weekday, nrow=2)
+```
